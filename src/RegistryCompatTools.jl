@@ -3,10 +3,11 @@ module RegistryCompatTools
 using UUIDs
 using Pkg
 using Crayons: Box
+import GitHub
 
 using RegistryTools
 
-export held_back_packages, held_back_by, print_held_back
+export held_back_packages, held_back_by, print_held_back, find_julia_packages_github
 
 struct Package
     name::String
@@ -33,8 +34,8 @@ Base.show(io::IO, hb::HeldBack) =
 Base.print(io::IO, hb::HeldBack) = show(io, hb)
 
 Base.show(io::IO, ::MIME"text/plain", hb::HeldBack) =
-    print(io, hb.name, "@", Box.LIGHT_GREEN_FG(string(hb.last_version)), " ",
-          Box.LIGHT_RED_FG(string(hb.compat)))
+    print(io, hb.name, "@", LIGHT_GREEN_FG(string(hb.last_version)), " ",
+          LIGHT_RED_FG(string(hb.compat)))
 
 function load_versions(path::String)
     toml = Pkg.Types.parse_toml(joinpath(path, "Versions.toml"); fakeit=true)
@@ -131,13 +132,13 @@ function held_back_by(name::String, d=held_back_packages())
 end
 held_back_by(name::AbstractString, args...) = held_back_by(String(name), args...)
 
-function print_held_back(io::IO=stdout)
-    pkgs = held_back_packages()
+function print_held_back(io::IO=stdout, pkgs=held_back_packages())
     color = get(io, :color, false)
     pad = maximum(textwidth, keys(pkgs))
     pkgs = collect(pkgs)
     sort!(pkgs, by=x->x.first)
     for (pkg, held_back) in pkgs
+        # This is not how you are supposed to do it...
         strs = if color
             sprint.((io, x) -> show(io, MIME("text/plain"), x), held_back)
         else
@@ -145,6 +146,39 @@ function print_held_back(io::IO=stdout)
         end
         println(io, rpad(pkg, pad, '-'), "=>[", join(strs, ", "), "]")
     end
+end
+
+"""
+    find_julia_packages_github()::Set{String}
+
+Returns a set of packages that are likely to be Julia packages
+that you have commit access to. Requries a github token being
+stored as a `GITHUB_AUTH` env variable.
+"""
+function find_julia_packages_github()
+    auth = GitHub.authenticate(ENV["GITHUB_AUTH"])
+    repos = available_repos(auth)
+    filter!(repos) do repo
+        repo.fork && return false
+        endswith(repo.name, ".jl") || return false
+    end
+    return Set(split(repo.name, ".jl")[1] for repo in repos)
+end
+
+function available_repos(auth)
+    myparams = Dict("per_page" => 100);
+    repos = []
+    page = 1
+    while true
+        myparams["page"] = page
+        results = GitHub.gh_get_json(GitHub.DEFAULT_API, "/user/repos"; auth,
+                                    params = myparams)
+        isempty(results) && break
+        page += 1
+        repos_page = map(GitHub.Repo, results)
+        append!(repos, repos_page)
+    end
+    return repos
 end
 
 end # module
