@@ -6,7 +6,7 @@ using Crayons: Box
 
 using RegistryTools
 
-export held_back_packages, print_held_back
+export held_back_packages, held_back_by, print_held_back
 
 struct Package
     name::String
@@ -33,13 +33,13 @@ Base.show(io::IO, hb::HeldBack) =
 Base.print(io::IO, hb::HeldBack) = show(io, hb)
 
 Base.show(io::IO, ::MIME"text/plain", hb::HeldBack) =
-    print(io, hb.name, "@", Box.LIGHT_GREEN_FG(string(hb.last_version)), " ", 
+    print(io, hb.name, "@", Box.LIGHT_GREEN_FG(string(hb.last_version)), " ",
           Box.LIGHT_RED_FG(string(hb.compat)))
 
 function load_versions(path::String)
     toml = Pkg.Types.parse_toml(joinpath(path, "Versions.toml"); fakeit=true)
     versions = Dict{VersionNumber, Base.SHA1}(
-        VersionNumber(ver) => Base.SHA1(info["git-tree-sha1"]) for (ver, info) in toml 
+        VersionNumber(ver) => Base.SHA1(info["git-tree-sha1"]) for (ver, info) in toml
             if !get(info, "yanked", false))
     return versions
 end
@@ -115,6 +115,21 @@ function held_back_packages()
     return packages_holding_back
 end
 
+"""
+    held_back_by(pkgname::AbstractString)
+
+Return a list of packages that are holding back `pkgname`.
+"""
+function held_back_by(name::String, d=held_back_packages())
+    heldby = Set{String}()
+    for (k, v) in d
+        for hb in v
+            hb.name == name && push!(heldby, k)
+        end
+    end
+    return sort(collect(heldby))
+end
+held_back_by(name::AbstractString, args...) = held_back_by(String(name), args...)
 
 function print_held_back(io::IO=stdout)
     pkgs = held_back_packages()
