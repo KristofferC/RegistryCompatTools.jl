@@ -1,4 +1,4 @@
-module RegistryCompatInfo
+module RegistryCompatTools
 
 using UUIDs
 using Pkg

@@ -1,4 +1,4 @@
-name = "RegistryCompatInfo"
+name = "RegistryCompatTools"
 uuid = "0f4576a4-702e-4e0a-9372-4ba70611ebaf"
 authors = ["KristofferC <kcarlsson89@gmail.com>"]
 version = "0.1.0"
