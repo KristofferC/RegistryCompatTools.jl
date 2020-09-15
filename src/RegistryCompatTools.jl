@@ -33,13 +33,13 @@ Base.show(io::IO, hb::HeldBack) =
 Base.print(io::IO, hb::HeldBack) = show(io, hb)
 
 Base.show(io::IO, ::MIME"text/plain", hb::HeldBack) =
-    print(io, hb.name, "@", Box.LIGHT_GREEN_FG(string(hb.last_version)), " ", 
+    print(io, hb.name, "@", Box.LIGHT_GREEN_FG(string(hb.last_version)), " ",
           Box.LIGHT_RED_FG(string(hb.compat)))
 
 function load_versions(path::String)
     toml = Pkg.Types.parse_toml(joinpath(path, "Versions.toml"); fakeit=true)
     versions = Dict{VersionNumber, Base.SHA1}(
-        VersionNumber(ver) => Base.SHA1(info["git-tree-sha1"]) for (ver, info) in toml 
+        VersionNumber(ver) => Base.SHA1(info["git-tree-sha1"]) for (ver, info) in toml
             if !get(info, "yanked", false))
     return versions
 end

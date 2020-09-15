@@ -1,4 +1,4 @@
-using RegistryCompatInfo
+using RegistryCompatTools
 
 using Test
 
