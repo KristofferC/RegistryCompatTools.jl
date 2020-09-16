@@ -49,7 +49,7 @@ otherwise.
 ```julia
 julia> d = held_back_packages();
 
-julia> my_pkgs = find_julia_packages_github();
+julia> my_pkgs = find_julia_packages_github()
 Set{SubString{String}} with 43 elements:
   "MethodAnalysis"
   "InplaceOps"
@@ -58,8 +58,6 @@ Set{SubString{String}} with 43 elements:
   "Clang_jll"
   "CSparse"
 ...
-
-julia> my_d = filter(p -> p.first in my_pkgs || any(x -> x.name in my_pkgs, p.second), d);
 
 # Show all packages that we are either holding back or others are holding back
 julia> my_d = filter(p -> p.first in my_pkgs || any(x -> x.name in my_pkgs, p.second), d)
