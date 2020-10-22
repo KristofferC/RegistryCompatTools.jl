@@ -45,13 +45,22 @@ function load_versions(path::String)
     return versions
 end
 
+get_newversion(d::Dict{String}, uuid, name, default) = get(d, name, default)
+get_newversion(d::Dict{UUID}, uuid, name, default) = get(d, uuid, default)
+
 """
+    held_back_packages(; newversions = Dict())
 
 Returns a vector of pairs with the first entry as package names and the values as lists of
 `HeldBack` objects. Every package in the list is upper bounded to not its last version by
 the package in the key. See the docs for `HeldBack` for what data it contains.
+
+The `newversions` keyword can be used to supply unregistered version numbers for specific packages;
+this can allow you to prospectively identify packages whose `[compat]` may need to
+be bumped if you release the specified package version(s). The keys of `newversions`
+can be `UUID` or `String`; the values should be `VersionNumber`s.
 """
-function held_back_packages()
+function held_back_packages(; newversions=Dict{UUID,VersionNumber}())
     stdlibs = readdir(Sys.STDLIB)
     regpath = joinpath(homedir(), ".julia/registries/General")
     packages = Dict{UUID, Package}()
@@ -60,7 +69,10 @@ function held_back_packages()
         pkgpath = joinpath(regpath, data["path"])
         name = data["name"]
         versions = load_versions(pkgpath)
-
+        nv = get_newversion(newversions, uuid, name, nothing)
+        if nv !== nothing
+            versions[nv] = Base.SHA1(ntuple(i->0x00, sizeof(Base.SHA1)))
+        end
         max_version = maximum(keys(versions))
         packages[UUID(uuid)] = Package(name, pkgpath, max_version)
     end
@@ -116,12 +128,20 @@ function held_back_packages()
     return packages_holding_back
 end
 
-"""
-    held_back_by(pkgname::AbstractString)
 
-Return a list of packages that are holding back `pkgname`.
 """
-function held_back_by(name::String, d=held_back_packages())
+    held_back_by(pkgname::AbstractString, version::VersionNumber)
+
+Return a list of packages would hold back the given not-yet-registered `version` of `pkgname`.
+"""
+held_back_by(name::String, version::VersionNumber) = held_back_by(name, held_back_packages(; newversions=Dict(name=>version)))
+
+"""
+    held_back_by(pkgname::AbstractString, d=held_back_packages())
+
+    Return a list of packages that are holding back `pkgname`. `d` can be obtained from [`held_back_packages`](@ref).
+"""
+function held_back_by(name::String, d::AbstractDict=held_back_packages())
     heldby = Set{String}()
     for (k, v) in d
         for hb in v
@@ -130,7 +150,8 @@ function held_back_by(name::String, d=held_back_packages())
     end
     return sort(collect(heldby))
 end
-held_back_by(name::AbstractString, args...) = held_back_by(String(name), args...)
+
+held_back_by(name::AbstractString, args...; kwargs...) = held_back_by(String(name), args...; kwargs...)
 
 function print_held_back(io::IO=stdout, pkgs=held_back_packages())
     color = get(io, :color, false)
