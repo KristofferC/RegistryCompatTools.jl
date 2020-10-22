@@ -71,7 +71,7 @@ function held_back_packages(; newversions=Dict{UUID,VersionNumber}())
         versions = load_versions(pkgpath)
         nv = get_newversion(newversions, uuid, name, nothing)
         if nv !== nothing
-            versions[nv] = Base.SHA1(ntuple(i->0x00, sizeof(Base.SHA1)))
+            versions[nv] = Base.SHA1(fill(0x00, 20))
         end
         max_version = maximum(keys(versions))
         packages[UUID(uuid)] = Package(name, pkgpath, max_version)
