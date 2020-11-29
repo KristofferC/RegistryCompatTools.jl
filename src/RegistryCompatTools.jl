@@ -1,3 +1,10 @@
+"""
+RegistryCompatTools makes it easier to discover packages that need [compat] updates.
+
+- `held_back_by("SomePkg")` - which packages are holding back SomePkg?
+- `held_back_packages()["SomePkg"]` - which packages does SomePkg hold back?
+- `find_julia_packages_github()` - discover which packages I can push to
+"""
 module RegistryCompatTools
 
 using UUIDs
