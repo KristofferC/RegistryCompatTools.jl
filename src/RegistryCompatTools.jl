@@ -34,8 +34,8 @@ Base.show(io::IO, hb::HeldBack) =
 Base.print(io::IO, hb::HeldBack) = show(io, hb)
 
 Base.show(io::IO, ::MIME"text/plain", hb::HeldBack) =
-    print(io, hb.name, "@", LIGHT_GREEN_FG(string(hb.last_version)), " ",
-          LIGHT_RED_FG(string(hb.compat)))
+    print(io, hb.name, "@", Box.LIGHT_GREEN_FG(string(hb.last_version)), " ",
+          Box.LIGHT_RED_FG(string(hb.compat)))
 
 function load_versions(path::String)
     toml = Pkg.Types.parse_toml(joinpath(path, "Versions.toml"); fakeit=true)
