@@ -69,19 +69,21 @@ can be `UUID` or `String`; the values should be `VersionNumber`s.
 """
 function held_back_packages(; newversions=Dict{UUID,VersionNumber}())
     stdlibs = readdir(Sys.STDLIB)
-    regpath = joinpath(homedir(), ".julia/registries/General")
     packages = Dict{UUID, Package}()
-    reg = Pkg.TOML.parsefile(joinpath(regpath, "Registry.toml"))
-    for (uuid, data) in reg["packages"]
-        pkgpath = joinpath(regpath, data["path"])
-        name = data["name"]
-        versions = load_versions(pkgpath)
-        nv = get_newversion(newversions, uuid, name, nothing)
-        if nv !== nothing
-            versions[nv] = Base.SHA1(fill(0x00, 20))
+    for regspec in Pkg.Types.collect_registries()
+        regpath = regspec.path
+        reg = Pkg.TOML.parsefile(joinpath(regpath, "Registry.toml"))
+        for (uuid, data) in reg["packages"]
+            pkgpath = joinpath(regpath, data["path"])
+            name = data["name"]
+            versions = load_versions(pkgpath)
+            nv = get_newversion(newversions, uuid, name, nothing)
+            if nv !== nothing
+                versions[nv] = Base.SHA1(fill(0x00, 20))
+            end
+            max_version = maximum(keys(versions))
+            packages[UUID(uuid)] = Package(name, pkgpath, max_version)
         end
-        max_version = maximum(keys(versions))
-        packages[UUID(uuid)] = Package(name, pkgpath, max_version)
     end
 
     packages_holding_back = Dict{String, Vector{HeldBack}}()
