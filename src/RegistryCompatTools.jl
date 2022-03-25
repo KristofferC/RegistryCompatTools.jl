@@ -16,6 +16,12 @@ using RegistryTools
 
 export held_back_packages, held_back_by, print_held_back, find_julia_packages_github
 
+if isdefined(Pkg.Types, :collect_registries)
+    registries() = Pkg.Types.collect_registries()
+else
+    registries() = Pkg.Registry.reachable_registries()
+end
+
 struct Package
     name::String
     path::String
@@ -70,7 +76,7 @@ can be `UUID` or `String`; the values should be `VersionNumber`s.
 function held_back_packages(; newversions=Dict{UUID,VersionNumber}())
     stdlibs = readdir(Sys.STDLIB)
     packages = Dict{UUID, Package}()
-    for regspec in Pkg.Types.collect_registries()
+    for regspec in registries()
         regpath = regspec.path
         reg = Pkg.TOML.parsefile(joinpath(regpath, "Registry.toml"))
         for (uuid, data) in reg["packages"]
