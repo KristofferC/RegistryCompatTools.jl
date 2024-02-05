@@ -11,20 +11,15 @@ using UUIDs
 using Pkg
 using Crayons: Box
 import GitHub
-
+using RegistryInstances
+using RegistryInstances: VersionSpec
 using RegistryTools
 
 export held_back_packages, held_back_by, print_held_back, find_julia_packages_github
 
-if isdefined(Pkg.Types, :collect_registries)
-    registries() = Pkg.Types.collect_registries()
-else
-    registries() = Pkg.Registry.reachable_registries()
-end
-
 struct Package
     name::String
-    path::String
+    info::PkgInfo
     max_version::VersionNumber
 end
 
@@ -50,16 +45,33 @@ Base.show(io::IO, ::MIME"text/plain", hb::HeldBack) =
     print(io, hb.name, "@", Box.LIGHT_GREEN_FG(string(hb.last_version)), " ",
           Box.LIGHT_RED_FG(string(hb.compat)))
 
-function load_versions(path::String)
-    toml = Pkg.Types.parse_toml(joinpath(path, "Versions.toml"); fakeit=true)
-    versions = Dict{VersionNumber, Base.SHA1}(
-        VersionNumber(ver) => Base.SHA1(info["git-tree-sha1"]) for (ver, info) in toml
-            if !get(info, "yanked", false))
-    return versions
-end
 
 get_newversion(d::Dict{String}, uuid, name, default) = get(d, name, default)
 get_newversion(d::Dict{UUID}, uuid, name, default) = get(d, uuid, default)
+
+# https://github.com/JuliaRegistries/RegistryTools.jl/blob/77e2a02e62185ce865653bdae95203a3a40510f0/src/Compress.jl#L47-L72
+function decompress(compressed; versions_dict)
+    versions = sort!([VersionNumber(v) for v in keys(versions_dict)])
+    uncompressed = Dict{VersionNumber,Dict{Any,Any}}()
+    for (vers, data) in compressed
+        vs = VersionSpec(vers)
+        for v in versions
+            v in vs || continue
+            uv = get!(uncompressed, v, Dict())
+            for (key, value) in data
+                # the `&& uv[key] != value`
+                # seems necessary here to not fail on some packages in the registry,
+                # but is not present in the `RegistryTools.Compress.load` version
+                if haskey(uv, key) && uv[key] != value
+                    error("Overlapping ranges for $(key) in Compat. Detected for version $(v).")
+                else
+                    uv[key] = value
+                end
+            end
+        end
+    end
+    return uncompressed
+end
 
 """
     held_back_packages(; newversions = Dict())
@@ -76,45 +88,39 @@ can be `UUID` or `String`; the values should be `VersionNumber`s.
 function held_back_packages(; newversions=Dict{UUID,VersionNumber}())
     stdlibs = readdir(Sys.STDLIB)
     packages = Dict{UUID, Package}()
-    for regspec in registries()
-        regpath = regspec.path
-        reg = Pkg.TOML.parsefile(joinpath(regpath, "Registry.toml"))
-        for (uuid, data) in reg["packages"]
-            pkgpath = joinpath(regpath, data["path"])
-            name = data["name"]
-            versions = load_versions(pkgpath)
+    for registry in reachable_registries()
+        for (uuid, data) in registry.pkgs
+            name = data.name
+            info = registry_info(data)
+            versions = Dict{VersionNumber, Base.SHA1}()
+            for (ver, vinfo) in info.version_info
+                vinfo.yanked && continue
+                versions[ver] = vinfo.git_tree_sha1
+            end
             nv = get_newversion(newversions, uuid, name, nothing)
             if nv !== nothing
                 versions[nv] = Base.SHA1(fill(0x00, 20))
             end
             max_version = maximum(keys(versions))
-            packages[UUID(uuid)] = Package(name, pkgpath, max_version)
+            packages[UUID(uuid)] = Package(name, info, max_version)
         end
     end
 
     packages_holding_back = Dict{String, Vector{HeldBack}}()
     for (uuid, pkg) in packages
-        pkgpath = pkg.path
-        compatfile = joinpath(pkgpath, "Compat.toml")
-        depfile = joinpath(pkgpath, "Deps.toml")
+        info = pkg.info
+        compats = compat_info(info)
 
-        compat_max_version = nothing
-        if isfile(compatfile)
-            compats = RegistryTools.Compress.load(joinpath(pkgpath, "Compat.toml"))
-            compat_max_version = if !haskey(compats, pkg.max_version)
-                nothing
-            else
-                compats[pkg.max_version]
-            end
+        compat_max_version = if !haskey(compats, pkg.max_version)
+            nothing
+        else
+            compats[pkg.max_version]
         end
-        deps_max_version = nothing
-        if isfile(depfile)
-            deps = RegistryTools.Compress.load(joinpath(pkgpath, "Deps.toml"))
-            deps_max_version = get(deps, pkg.max_version, nothing)
-            if deps_max_version === nothing
-                # No deps at all
-                continue
-            end
+        deps = decompress(info.deps; versions_dict=info.version_info)
+        deps_max_version = get(deps, pkg.max_version, nothing)
+        if deps_max_version === nothing
+            # No deps at all
+            continue
         end
         if compat_max_version !== nothing && deps_max_version !== nothing
             packages_being_held_back = HeldBack[]
@@ -123,13 +129,12 @@ function held_back_packages(; newversions=Dict{UUID,VersionNumber}())
                 if dep_name in stdlibs
                     continue
                 end
-                compat = get(compat_max_version, dep_name, nothing)
+                compat = get(compat_max_version, dep_uuid, nothing)
                 # No compat at all declared
                 if compat === nothing
                     continue
                 end
                 compat = Pkg.Types.VersionSpec(compat)
-                dep_pkg = packages[dep_uuid].max_version
                 dep_max_version = packages[dep_uuid].max_version
                 if !(dep_max_version in compat)
                     push!(packages_being_held_back, HeldBack(dep_name, dep_max_version, compat))
