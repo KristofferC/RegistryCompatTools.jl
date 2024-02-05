@@ -109,7 +109,7 @@ function held_back_packages(; newversions=Dict{UUID,VersionNumber}())
     packages_holding_back = Dict{String, Vector{HeldBack}}()
     for (uuid, pkg) in packages
         info = pkg.info
-        compats = decompress(compat_info(info); versions_dict=info.version_info)
+        compats = compat_info(info)
 
         compat_max_version = if !haskey(compats, pkg.max_version)
             nothing
